@@ -24,9 +24,18 @@ COPY . .
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV PORT=8080
 
-# Expose port (if needed)
+# Expose port for health checks
 EXPOSE 8080
 
-# Run the agent
-CMD ["python", "agent.py", "start"]
+# Create startup script
+RUN echo '#!/bin/bash\n\
+# Start health check server in background\n\
+python health_check.py &\n\
+# Start the main agent\n\
+python agent.py start\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+# Run both health check and agent
+CMD ["/app/start.sh"]

@@ -1,0 +1,64 @@
+name: livekit-mcp-agent
+services:
+- name: agent
+  source_dir: /
+  github:
+    repo: klogins-hash/livekit-mcp-agent
+    branch: main
+    deploy_on_push: true
+  
+  # Use Dockerfile for build
+  dockerfile_path: Dockerfile
+  
+  # Environment variables (will be set via DO dashboard for security)
+  envs:
+  - key: LIVEKIT_URL
+    scope: RUN_TIME
+    type: SECRET
+  - key: LIVEKIT_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+  - key: LIVEKIT_API_SECRET
+    scope: RUN_TIME
+    type: SECRET
+  - key: OPENAI_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+  - key: DEEPGRAM_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+  - key: CARTESIA_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+  - key: RUBE_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+  
+  # Resource configuration
+  instance_count: 1
+  instance_size_slug: basic-xxs  # $5/month, can scale up
+  
+  # Health check
+  health_check:
+    http_path: /health
+    initial_delay_seconds: 60
+    period_seconds: 30
+    timeout_seconds: 10
+    failure_threshold: 3
+    success_threshold: 1
+  
+  # Auto-scaling (optional)
+  autoscaling:
+    min_instance_count: 1
+    max_instance_count: 3
+    metrics:
+    - type: cpu
+      target:
+        average_utilization: 70
+
+# Optional: Add a database if needed later
+# databases:
+# - name: agent-db
+#   engine: PG
+#   version: "14"
+#   size: db-s-1vcpu-1gb
