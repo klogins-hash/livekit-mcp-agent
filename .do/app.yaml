@@ -10,6 +10,9 @@ services:
   # Use Dockerfile for build
   dockerfile_path: Dockerfile
   
+  # This is a worker service, not a web service
+  http_port: 8080
+  
   # Environment variables (will be set via DO dashboard for security)
   envs:
   - key: LIVEKIT_URL
