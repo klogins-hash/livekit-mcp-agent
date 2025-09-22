@@ -23,7 +23,7 @@ from functools import wraps
 from dotenv import load_dotenv
 import aiohttp
 
-load_dotenv(dotenv_path=Path(__file__).parent.parent / '.env')
+load_dotenv(dotenv_path=Path(__file__).parent / '.env')
 
 mcp = FastMCP("LiveKit MCP")
 

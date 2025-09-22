@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: livekit-mcp-agent
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    envVars:
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: RUBE_API_KEY
+        sync: false
+    buildCommand: pip install -r requirements.txt
+    startCommand: python agent.py start

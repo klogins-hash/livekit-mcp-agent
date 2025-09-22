@@ -3,11 +3,9 @@ livekit-plugins-aws[realtime]
 livekit-plugins-noise-cancellation
 python-dotenv
 requests>=2.32.0
-annoy
 pydantic
 flask
 pandas
 websockets>=11.0.3
 rich
 mcp
-librosa

@@ -1,0 +1,90 @@
+apiVersion: livekit.io/v1
+kind: Agent
+metadata:
+  name: mcp-rube-agent
+  namespace: default
+spec:
+  # Agent configuration
+  agent:
+    name: "MCP Rube Agent"
+    version: "1.0.0"
+    description: "Voice-interactive agent with Rube MCP integration"
+    
+  # Runtime configuration
+  runtime:
+    image: "python:3.11-slim"
+    command: ["python", "agent.py", "start"]
+    
+  # Environment variables
+  env:
+    - name: LIVEKIT_URL
+      valueFrom:
+        secretKeyRef:
+          name: livekit-credentials
+          key: url
+    - name: LIVEKIT_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: livekit-credentials
+          key: api-key
+    - name: LIVEKIT_API_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: livekit-credentials
+          key: api-secret
+    - name: OPENAI_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: api-credentials
+          key: openai-key
+    - name: DEEPGRAM_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: api-credentials
+          key: deepgram-key
+    - name: RUBE_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: api-credentials
+          key: rube-key
+          
+  # Resource requirements
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+      
+  # Auto-scaling
+  replicas:
+    min: 1
+    max: 3
+    
+  # Health checks
+  healthCheck:
+    enabled: true
+    path: "/health"
+    
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: livekit-credentials
+type: Opaque
+stringData:
+  url: "wss://ttd-admin-o7dh273v.livekit.cloud"
+  api-key: "APIDLKe9KFnAs4m"
+  api-secret: "EybXGdIiKzWGJY8mneZezoMR7FjfLxjVmKsXRRXI0DLB"
+  
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: api-credentials
+type: Opaque
+stringData:
+  openai-key: ""  # Will be set during deployment
+  deepgram-key: ""  # Will be set during deployment
+  rube-key: ""  # Will be set during deployment
