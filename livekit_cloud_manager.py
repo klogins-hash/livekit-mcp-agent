@@ -143,6 +143,7 @@ class LiveKitCloudManager:
                     "OPENAI_API_KEY": os.getenv('OPENAI_API_KEY'),
                     "DEEPGRAM_API_KEY": os.getenv('DEEPGRAM_API_KEY'),
                     "CARTESIA_API_KEY": os.getenv('CARTESIA_API_KEY'),
+                    "MC3_API_KEY": os.getenv('MC3_API_KEY'),
                     "RUBE_API_KEY": os.getenv('RUBE_API_KEY')
                 },
                 "resources": {
@@ -182,6 +183,7 @@ class LiveKitCloudManager:
                 '--env', f"OPENAI_API_KEY={os.getenv('OPENAI_API_KEY')}",
                 '--env', f"DEEPGRAM_API_KEY={os.getenv('DEEPGRAM_API_KEY')}",
                 '--env', f"CARTESIA_API_KEY={os.getenv('CARTESIA_API_KEY')}",
+                '--env', f"MC3_API_KEY={os.getenv('MC3_API_KEY')}",
                 '--env', f"RUBE_API_KEY={os.getenv('RUBE_API_KEY')}",
                 '--cpu', '500m',
                 '--memory', '1Gi',

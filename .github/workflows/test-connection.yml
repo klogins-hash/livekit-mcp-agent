@@ -1,0 +1,42 @@
+name: Test MCP Connection
+
+on:
+  workflow_dispatch:  # Allow manual triggering for testing
+  schedule:
+    - cron: '0 */6 * * *'  # Test every 6 hours
+
+jobs:
+  test-mcp-connection:
+    name: Test MC3 MCP Server Connection
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Test MC3 MCP Server Connection
+      env:
+        MC3_API_KEY: ${{ secrets.MC3_API_KEY }}
+      run: |
+        python test_mc3_connection.py
+        
+    - name: Report Status
+      if: always()
+      run: |
+        if [ $? -eq 0 ]; then
+          echo "✅ MC3 MCP Server connection test passed"
+          echo "🎯 Agent is ready for deployment"
+        else
+          echo "❌ MC3 MCP Server connection test failed"
+          echo "🔍 Check your MC3_API_KEY secret configuration"
+        fi

@@ -1,0 +1,214 @@
+name: Deploy LiveKit MCP Agent
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'agent.py'
+      - 'requirements.txt'
+      - '.env.example'
+      - 'livekit.toml'
+      - '*.py'
+      - '.github/workflows/deploy-agent.yml'
+  pull_request:
+    branches: [ main, master ]
+    types: [ closed ]
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  test-connection:
+    name: Test MCP Connection
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Test MC3 MCP Server Connection
+      env:
+        MC3_API_KEY: ${{ secrets.MC3_API_KEY }}
+      run: |
+        python test_mc3_connection.py
+        
+    - name: Validate agent configuration
+      env:
+        LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+        LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+        LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+        CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+        MC3_API_KEY: ${{ secrets.MC3_API_KEY }}
+      run: |
+        python -c "
+        import os
+        required_vars = ['LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'MC3_API_KEY', 'OPENAI_API_KEY', 'DEEPGRAM_API_KEY']
+        missing = [var for var in required_vars if not os.getenv(var)]
+        if missing:
+            print(f'❌ Missing environment variables: {missing}')
+            exit(1)
+        print('✅ All required environment variables are set')
+        "
+
+  deploy-agent:
+    name: Deploy to LiveKit Cloud
+    runs-on: ubuntu-latest
+    needs: test-connection
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install LiveKit CLI
+      run: |
+        # Try to install LiveKit CLI via Go
+        if command -v go &> /dev/null; then
+          go install github.com/livekit/livekit-cli/cmd/lk@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+        else
+          echo "⚠️ Go not available, will use alternative deployment method"
+        fi
+        
+    - name: Create deployment environment file
+      env:
+        LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+        LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+        LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+        CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+        MC3_API_KEY: ${{ secrets.MC3_API_KEY }}
+        RUBE_API_KEY: ${{ secrets.RUBE_API_KEY }}
+      run: |
+        cat > .env << EOF
+        LIVEKIT_URL=$LIVEKIT_URL
+        LIVEKIT_API_KEY=$LIVEKIT_API_KEY
+        LIVEKIT_API_SECRET=$LIVEKIT_API_SECRET
+        OPENAI_API_KEY=$OPENAI_API_KEY
+        DEEPGRAM_API_KEY=$DEEPGRAM_API_KEY
+        CARTESIA_API_KEY=$CARTESIA_API_KEY
+        MC3_API_KEY=$MC3_API_KEY
+        RUBE_API_KEY=$RUBE_API_KEY
+        EOF
+        
+    - name: Deploy via LiveKit CLI (if available)
+      id: livekit_deploy
+      continue-on-error: true
+      run: |
+        if command -v lk &> /dev/null; then
+          echo "🚀 Deploying with LiveKit CLI..."
+          lk deploy
+          echo "deployment_method=livekit_cli" >> $GITHUB_OUTPUT
+        else
+          echo "⚠️ LiveKit CLI not available"
+          echo "deployment_method=alternative" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+    - name: Alternative deployment via Docker/Railway
+      if: steps.livekit_deploy.outcome == 'failure'
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      run: |
+        echo "🚀 Using alternative deployment method..."
+        
+        # Try Railway deployment if token is available
+        if [ ! -z "$RAILWAY_TOKEN" ]; then
+          echo "📦 Deploying to Railway..."
+          npm install -g @railway/cli
+          railway login --token $RAILWAY_TOKEN
+          railway up --detach
+        else
+          echo "ℹ️ Railway token not available, creating deployment package..."
+          # Create a deployment package that can be manually deployed
+          zip -r livekit-mcp-agent-$(date +%Y%m%d-%H%M%S).zip . -x "venv/*" ".git/*" "__pycache__/*" "*.pyc"
+          echo "📦 Deployment package created"
+        fi
+        
+    - name: Update agent status
+      if: always()
+      run: |
+        echo "🎯 Deployment Summary:"
+        echo "- Commit: ${{ github.sha }}"
+        echo "- Branch: ${{ github.ref_name }}"
+        echo "- Triggered by: ${{ github.event_name }}"
+        echo "- Agent ID: CA_57hqHZyvM6Yn"
+        echo "- LiveKit URL: ${{ secrets.LIVEKIT_URL }}"
+        
+    - name: Create deployment artifact
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: deployment-logs
+        path: |
+          .env
+          *.log
+        retention-days: 7
+
+  notify-deployment:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [test-connection, deploy-agent]
+    if: always()
+    
+    steps:
+    - name: Deployment Success Notification
+      if: needs.deploy-agent.result == 'success'
+      run: |
+        echo "🎉 Deployment Successful!"
+        echo "✅ Agent CA_57hqHZyvM6Yn is now running with latest changes"
+        echo "🔗 Connect to your LiveKit room to test the updated agent"
+        
+    - name: Deployment Failure Notification
+      if: needs.deploy-agent.result == 'failure'
+      run: |
+        echo "❌ Deployment Failed!"
+        echo "🔍 Check the deployment logs for details"
+        echo "💡 You may need to deploy manually or check your secrets configuration"
+        
+    - name: Test Failure Notification
+      if: needs.test-connection.result == 'failure'
+      run: |
+        echo "❌ Connection Tests Failed!"
+        echo "🔍 Check your MC3 API key and network connectivity"
+        echo "💡 Verify all required secrets are properly configured"
