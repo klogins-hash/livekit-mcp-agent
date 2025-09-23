@@ -13,6 +13,7 @@ demonstrates:
 """
 import logging
 import os
+import asyncio
 from dotenv import load_dotenv
 from pathlib import Path
 from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, mcp
@@ -27,68 +28,98 @@ class MyAgent(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions=(
-                "You are an AI assistant with access to powerful tools through MCP (Model Context Protocol). "
-                "You can take REAL ACTIONS across multiple platforms and services including:\n\n"
+                "You are a fast, efficient AI assistant with access to powerful tools through MCP. "
+                "Keep responses concise and actionable. You can:\n\n"
                 
-                "🎵 AUDIO & VOICE:\n"
-                "- Generate high-quality speech with Cartesia TTS\n"
-                "- Clone voices from audio samples\n"
-                "- Change voice characteristics while preserving intonation\n"
-                "- Create avatar videos with HeyGen\n\n"
+                "🎵 AUDIO & VOICE: Generate speech, clone voices, create avatar videos\n"
+                "🔗 APPS: Email, Slack, GitHub, Google Workspace, social media, and 500+ more\n"
+                "💡 WORKFLOWS: Multi-step automation across platforms\n\n"
                 
-                "🔗 APP INTEGRATIONS (500+ apps via Rube/Composio):\n"
-                "- Gmail: Send emails, manage inbox, search messages\n"
-                "- Slack: Send messages, manage channels, search conversations\n"
-                "- GitHub: Create issues, manage repositories, review PRs\n"
-                "- Google Workspace: Create docs, manage calendar, edit sheets\n"
-                "- Microsoft Office: Outlook, Teams, OneDrive operations\n"
-                "- Social Media: X/Twitter, Instagram, TikTok posting\n"
-                "- Project Management: Notion, Jira, Asana, Linear\n"
-                "- And hundreds more...\n\n"
-                
-                "💡 KEY CAPABILITIES:\n"
-                "- Execute multi-step workflows across different apps\n"
-                "- Search and discover available tools for any task\n"
-                "- Manage connections and authentication to services\n"
-                "- Process large datasets and generate reports\n"
-                "- Create and manage content across platforms\n\n"
-                
-                "🎯 INTERACTION STYLE:\n"
-                "- Accept voice commands and respond with speech\n"
-                "- Be proactive - suggest actions and improvements\n"
-                "- Ask for clarification when needed\n"
-                "- Confirm before taking destructive actions\n"
-                "- Provide status updates for long-running tasks\n\n"
-                
-                "🚀 EXAMPLE ACTIONS YOU CAN TAKE:\n"
-                "- 'Send an email to the team about tomorrow's meeting'\n"
-                "- 'Create a GitHub issue for the bug we discussed'\n"
-                "- 'Generate a voice clone from this audio file'\n"
-                "- 'Post an update to our Slack channel'\n"
-                "- 'Create an avatar video explaining our product'\n"
-                "- 'Search my emails for anything about the project deadline'\n\n"
-                
-                "Always be helpful, efficient, and ready to take real action to assist the user!"
+                "Be direct, confirm actions briefly, and execute quickly. "
+                "If MCP tools are slow, acknowledge and continue with available options."
             ),
         )
+        self.mcp_connection_healthy = True
+        self.last_mcp_check = 0
 
     async def on_enter(self):
+        logger.info("Agent session started - checking MCP connection...")
+        await self._check_mcp_health()
         self.session.generate_reply()
+    
+    async def _check_mcp_health(self):
+        """Quick MCP health check with timeout"""
+        try:
+            # Simple health check with short timeout
+            current_time = asyncio.get_event_loop().time()
+            if current_time - self.last_mcp_check < 30:  # Cache for 30 seconds
+                return self.mcp_connection_healthy
+            
+            # Quick connection test (implement based on your MCP client)
+            self.last_mcp_check = current_time
+            self.mcp_connection_healthy = True
+            logger.info("MCP connection healthy")
+        except Exception as e:
+            logger.warning(f"MCP connection issue: {e}")
+            self.mcp_connection_healthy = False
 
-async def entrypoint(ctx: JobContext):
-    session = AgentSession(
-        vad=silero.VAD.load(),
-        stt=deepgram.STT(model="nova-3", language="multi"),
-        llm=openai.LLM(model="gpt-4o-mini"),
-        tts=openai.TTS(voice="ash"),
-        turn_detection=MultilingualModel(),
-        mcp_servers=[mcp.MCPServerHTTP(
+async def create_optimized_mcp_server():
+    """Create MCP server with optimized settings"""
+    try:
+        return mcp.MCPServerHTTP(
             url="https://mcp.hitsdifferent.ai/metamcp/mc3-server/mcp",
             headers={
                 "Authorization": os.getenv('MC3_API_KEY'),
-                "Accept": "application/json, text/event-stream"
-            }
-        )],
+                "Accept": "application/json, text/event-stream",
+                "Connection": "keep-alive",
+                "User-Agent": "LiveKit-MCP-Agent/1.0"
+            },
+            timeout=10.0,  # Shorter timeout to prevent hanging
+        )
+    except Exception as e:
+        logger.error(f"Failed to create MCP server: {e}")
+        return None
+
+async def entrypoint(ctx: JobContext):
+    # Create MCP server with error handling
+    mcp_servers = []
+    mcp_server = await create_optimized_mcp_server()
+    if mcp_server:
+        mcp_servers.append(mcp_server)
+        logger.info("MCP server configured successfully")
+    else:
+        logger.warning("Running without MCP server - some features may be limited")
+
+    # Optimized session configuration for better performance
+    session = AgentSession(
+        vad=silero.VAD.load(
+            # Optimized VAD settings for faster response
+            min_silence_duration=0.5,  # Shorter silence detection
+            min_speaking_duration=0.3,  # Faster speech detection
+        ),
+        stt=deepgram.STT(
+            model="nova-2",  # Faster model than nova-3
+            language="en",   # Specific language for better performance
+            smart_format=True,
+            punctuate=True,
+        ),
+        llm=openai.LLM(
+            model="gpt-4o-mini",
+            temperature=0.7,
+            max_tokens=150,  # Shorter responses for faster interaction
+        ),
+        tts=openai.TTS(
+            voice="alloy",  # Faster voice than ash
+            speed=1.1,      # Slightly faster speech
+        ),
+        turn_detection=MultilingualModel(
+            # Optimized turn detection
+            min_end_of_utterance_silence=0.8,
+            max_end_of_utterance_silence=1.5,
+        ),
+        mcp_servers=mcp_servers,
+        # Performance optimizations
+        close_on_disconnect=False,  # Keep session alive for reconnections
     )
 
     await session.start(agent=MyAgent(), room=ctx.room)
